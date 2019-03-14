@@ -1,13 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
-namespace ConsoleForm
+namespace TacticRoguelikeRpg
 {
     public class ExtendedConsole
     {
@@ -26,12 +24,12 @@ namespace ConsoleForm
         ref RECT lpWriteRegion);
         #endregion
 
-        private static CHAR_INFO[][,] Layers = new CHAR_INFO[3][,];
+        private static CHAR_INFO[][,] Layers  = new CHAR_INFO[4][,];
 
         private static int vCursorPosX = 0;
         private static int vCursorPosY = 0;
         private static int activeLayer = 0;
-        
+
         public static ConsoleColor disabledColor { get; set; } = ConsoleColor.Gray;
         public static ConsoleColor selectionColor { get; set; } = ConsoleColor.DarkGreen;
         public static ConsoleColor lineUIColor { get; set; } = ConsoleColor.Blue;
@@ -40,6 +38,11 @@ namespace ConsoleForm
         {
             Console.CursorVisible = false;
             //Initie chaque layers
+            UpdateVirtualConsoleSize();
+        }
+
+        public static void UpdateVirtualConsoleSize()
+        {
             for (int i = 0; i < Layers.Length; i++)
                 Layers[i] = new CHAR_INFO[Console.BufferWidth + 1, Console.WindowHeight + 1];
         }
@@ -106,9 +109,18 @@ namespace ConsoleForm
                 }
             }
         }
+        public static void VirtualWrite(char c, int x = -1, int y = -1)
+        {
+            VirtualWrite(c.ToString(), x, y);
+        }
+        public static void VirtualWrite(int i, int x = -1, int y = -1)
+        {
+            VirtualWrite(i.ToString(), x, y);
+        }
+
 
         /// <summary>Efface une zone sur le layer actif aux coordonées du pointeur virtuel sans mettre à jour la console.</summary>
-        public static void VirtualErase(int _width = -1, int _height = -1, int x = -1, int y = -1)
+        public static void VirtualErase(int x = -1, int y = -1, int _width = -1, int _height = -1)
         {
             if (x == -1)
                 x = vCursorPosX;
@@ -139,14 +151,14 @@ namespace ConsoleForm
             if (_layerIndex < 0 || _layerIndex >= Layers.Length)
                 index = activeLayer;
 
-            Layers[index] = new CHAR_INFO[Console.BufferWidth, Console.WindowHeight];
+            Layers[index] = new CHAR_INFO[Console.BufferWidth, Console.WindowHeight + 1];
         }
 
         /// <summary>Réinitialize tous les layers sans mettre à jour la console.</summary>
         public static void VirtualClear()
         {
             for (int i = 0; i < Layers.Length; i++)
-                Layers[i] = new CHAR_INFO[Console.BufferWidth, Console.WindowHeight];
+                Layers[i] = new CHAR_INFO[Console.BufferWidth, Console.WindowHeight + 1];
         }
 
         /// <summary>Update une zone de la console en compilant les données du systeme de layers. Update l'intégrale de la console par défault.</summary>
@@ -248,14 +260,14 @@ namespace ConsoleForm
             return GetUserInput(null, addConfirmInput, addCancelInput, addLetterInput);
         }
 
-        /// <summary>Affiche une liste d'option et retourne l'index de celle choisi par l'utilisateur</summary>
-        public static int ShowMenuAndGetChoice(string[] _options, int _width = -1, int _startingPosition = 1, bool _canCancel = true, bool[] _disabledOptions = null)
+        /// <summary>Affiche une liste d'option et accepte l'input de l'utilisateur</summary>
+        /// <returns>index du choix de l'utilisateur</returns>
+        public static int ShowMenuAndGetChoice(string[] _options, int x = 0, int y = 0, int _startingPosition = 1, bool _canCancel = true, bool[] _disabledOptions = null, bool withBox = true)
         {
             int width = 0;
-            if (_width < 0)
-                foreach (string s in _options)
-                    if (width < s.Length)
-                        width = s.Length;
+            foreach (string s in _options)
+                if (width < s.Length)
+                    width = s.Length;
 
             //S'assure que les entrées ne causesont pas d'erreur
             if (_disabledOptions == null)
@@ -263,6 +275,12 @@ namespace ConsoleForm
 
             if (_startingPosition < 1 || _startingPosition > _options.Length)
                 _startingPosition = 1;
+
+            if (_options.Length == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                _options = new string[] { "ERROR - NO OPTIONS" };
+            }
 
             if (_disabledOptions.Length != _options.Length)
             {
@@ -275,22 +293,13 @@ namespace ConsoleForm
                 _disabledOptions = new bool[_options.Length];
             }
 
-            if (_options.Length == 0)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine();
-                Console.WriteLine("ERROR(helper): ");
-                Console.ReadKey();
-                Console.WriteLine("Initializing default _disabledOptions[]");
-                Console.ReadKey();
-                _options = new string[] { "ERROR" };
-            }
+
 
             //Processus de selection
             ConsoleColor currentBGColor = Console.BackgroundColor;
             ConsoleColor currentFGColor = Console.ForegroundColor;
 
-            int originY = vCursorPosY;
+            int originY = y + 1;
             //Normalize la taille des options et écrit chacune d'elle à l'écran
             for (int i = 0; i < _options.Length; i++)
             {
@@ -301,15 +310,25 @@ namespace ConsoleForm
                     Console.ForegroundColor = disabledColor;
                 if (i + 1 == _startingPosition)
                     Console.BackgroundColor = selectionColor;
-                vCursorPosY = originY + i;
-                VirtualWrite(_options[i].Substring(0, width));
+                y = originY + i;
+                VirtualWrite(_options[i].Substring(0, width), x + 1, y);
 
                 Console.BackgroundColor = currentBGColor;
                 Console.ForegroundColor = currentFGColor;
 
             }
+            if (withBox)
+            {
+                width = 0;
+                foreach (string line in _options)
+                    if (line.Length > width)
+                        width = line.Length;
+                VirtualDrawBox(x, originY - 1, width + 2, _options.Length + 2);
+            }
+
             Update();
-            vCursorPosY = originY;
+            y = originY;
+            x++;
 
             int choice = _startingPosition;
             ConsoleKeyInfo userInput;
@@ -328,31 +347,31 @@ namespace ConsoleForm
                         if (choice == 1)
                         {
                             Console.BackgroundColor = currentBGColor;
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                             choice = _options.Length;
                             if (selectionColor == currentBGColor)
                                 Console.BackgroundColor = ConsoleColor.DarkGreen;
                             else
                                 Console.BackgroundColor = selectionColor;
 
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                         }
                         else
                         {
                             Console.BackgroundColor = currentBGColor;
 
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                             choice--;
                             if (selectionColor == currentBGColor)
                                 Console.BackgroundColor = ConsoleColor.DarkGreen;
                             else
                                 Console.BackgroundColor = selectionColor;
 
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                         }
 
                         break;
@@ -364,31 +383,31 @@ namespace ConsoleForm
                         if (choice == _options.Length)
                         {
                             Console.BackgroundColor = currentBGColor;
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                             choice = 1;
                             if (selectionColor == currentBGColor)
                                 Console.BackgroundColor = ConsoleColor.DarkGreen;
                             else
                                 Console.BackgroundColor = selectionColor;
 
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                         }
                         else
                         {
                             Console.BackgroundColor = currentBGColor;
 
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                             choice++;
                             if (selectionColor == currentBGColor)
                                 Console.BackgroundColor = ConsoleColor.DarkGreen;
                             else
                                 Console.BackgroundColor = selectionColor;
 
-                            vCursorPosY = originY + choice - 1;
-                            VirtualWrite(_options[choice - 1]);
+                            y = originY + choice - 1;
+                            VirtualWrite(_options[choice - 1], x, y);
                         }
                         break;
                     case ConsoleKey.Spacebar:
@@ -406,7 +425,7 @@ namespace ConsoleForm
                 Update();
             }
             Console.BackgroundColor = currentBGColor;
-            return choice - 1;
+            return choice;
         }
 
         /// <summary>Ouverture animée d'une boite de menu sur le layer actif</summary>
@@ -557,8 +576,9 @@ namespace ConsoleForm
             int width = 0;
 
             foreach (string s in image)
-                if (width < s.Length + 2)
-                    width = s.Length + 2;
+                if (s != null)
+                    if (width < s.Length + 2)
+                        width = s.Length + 2;
 
             AnimatedMenuBoxOpening(x, y, width, height, _openingSpeed, image);
         }
@@ -575,8 +595,8 @@ namespace ConsoleForm
             //ferme Verticalement
             for (int i = (height / 2); i > 0; i--)
             {
-                VirtualErase(width, 1, x, y + (height / 2) - i);
-                VirtualErase(width, 1, x, y + (height / 2) + i);
+                VirtualErase(x, y + (height / 2) - i, width, 1);
+                VirtualErase(x, y + (height / 2) + i, width, 1);
                 VirtualDrawHorizontalLine(y + (height / 2) - i + 1, x, width);
                 VirtualDrawHorizontalLine(y + (height / 2) + i - 1, x, width);
                 //Relie au reste de l'UI
@@ -629,8 +649,8 @@ namespace ConsoleForm
             //ferme horizontalement
             for (int i = width / 2; i >= 0; i--)
             {
-                VirtualErase(1, 1, x + (width / 2) - i, y + (height / 2));
-                VirtualErase(1, 1, x + (width / 2) + i, y + (height / 2));
+                VirtualErase(x + (width / 2) - i, y + (height / 2), 1, 1);
+                VirtualErase(x + (width / 2) + i, y + (height / 2), 1, 1);
                 Update();
                 Thread.Sleep(sleepTimeHorizontal);
             }
@@ -667,6 +687,32 @@ namespace ConsoleForm
                 VirtualDrawHorizontalLine(top, left, width, doubleLines);
             else if (height > 1)
                 VirtualDrawVerticalLine(left, top, height, doubleLines);
+        }
+        public static void VirtualDrawBox(int left, int top, string[] image, bool doubleLines = true)
+        {
+            int width = 2;
+            int height = image.Length + 2;
+            for (int i = 0; i < image.Length; i++)
+            {
+                if (image[i] != null)
+                {
+                    if (image[i].Length > width - 2)
+                        width = image[i].Length + 2;
+
+                }
+                else
+                {
+                    image[i] = "";
+                }
+            }
+            for (int i = 0; i < image.Length; i++)
+                while (image[i].Length < width - 2)
+                    image[i] += " ";
+
+            VirtualDrawBox(left, top, width, height, doubleLines);
+
+            for (int i = 0; i < image.Length; i++)
+                VirtualWrite(image[i], left + 1, top + i + 1);
         }
 
         static bool IsLinkedDown(int x, int y)
@@ -1141,6 +1187,11 @@ namespace ConsoleForm
             toReturn.charData = new byte[] { 0, 0 };
             toReturn.attributes = 0;
             return toReturn;
+        }
+
+        public static CHAR_INFO GetCHARINFOOnLayer(int layer, int x, int y)
+        {
+            return Layers[layer][x, y];
         }
 
         #region Trucs pour WIN32
