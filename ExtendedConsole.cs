@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
-namespace TacticRoguelikeRpg
+namespace Game
 {
     public class ExtendedConsole
     {
@@ -24,7 +24,7 @@ namespace TacticRoguelikeRpg
         ref RECT lpWriteRegion);
         #endregion
 
-        private static CHAR_INFO[][,] Layers  = new CHAR_INFO[4][,];
+        private static CHAR_INFO[][,] Layers = new CHAR_INFO[4][,];
 
         private static int vCursorPosX = 0;
         private static int vCursorPosY = 0;
@@ -36,7 +36,6 @@ namespace TacticRoguelikeRpg
 
         static ExtendedConsole()
         {
-            Console.CursorVisible = false;
             //Initie chaque layers
             UpdateVirtualConsoleSize();
         }
@@ -158,7 +157,20 @@ namespace TacticRoguelikeRpg
         public static void VirtualClear()
         {
             for (int i = 0; i < Layers.Length; i++)
-                Layers[i] = new CHAR_INFO[Console.BufferWidth, Console.WindowHeight + 1];
+                Layers[i] = new CHAR_INFO[Console.BufferWidth + 1, Console.WindowHeight + 1];
+        }
+
+        public static void VirtualFill(char c, int x, int y, int width, int height)
+        {
+            string toWrite = "";
+            while (toWrite.Length < width - x)
+                toWrite += c;
+            for (int i = y; i < height; i++)
+                VirtualWrite(toWrite, x, i);
+        }
+        public static void VirtualFill(int x, int y, int width, int height)
+        {
+            VirtualFill(' ', x, y, width, height);
         }
 
         /// <summary>Update une zone de la console en compilant les données du systeme de layers. Update l'intégrale de la console par défault.</summary>
@@ -1174,6 +1186,11 @@ namespace TacticRoguelikeRpg
         static CHAR_INFO GetCHARINFOAtPosition(int _x, int _y)
         {
             CHAR_INFO toReturn = new CHAR_INFO();
+            toReturn.charData = new byte[] { 0, 0 };
+            toReturn.attributes = 0;
+
+            if (_x > Layers[0].GetLength(0) - 1 || _y > Layers[0].GetLength(1))
+                return toReturn;
 
             if (_x >= 0 && _x <= Layers[0].GetLength(0) && _y >= 0 && _y < Layers[0].GetLength(1))
                 for (int i = Layers.Length - 1; i >= 0; i--)
@@ -1183,10 +1200,12 @@ namespace TacticRoguelikeRpg
                         toReturn.attributes = Layers[i][_x, _y].attributes;
                         return toReturn;
                     }
-
-            toReturn.charData = new byte[] { 0, 0 };
-            toReturn.attributes = 0;
             return toReturn;
+        }
+
+        public static char GetCharAtPosition(int x, int y)
+        {
+            return Encoding.GetEncoding(437).GetChars(GetCHARINFOAtPosition(x, y).charData)[0];
         }
 
         public static CHAR_INFO GetCHARINFOOnLayer(int layer, int x, int y)
